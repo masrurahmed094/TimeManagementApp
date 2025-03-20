@@ -13,9 +13,7 @@ Click nbfs://nbhost/SystemFileSystem/Templates/Project/PHP/PHPProject.php to edi
         <title></title>
     </head>
     <body>
-        <?php
-        // put your code here
-        ?>
+         <input type="Garcon" name="Sami" value="22" />
     </body>
 </html>
 >>>>>>> Initial commit of TimeMApp
