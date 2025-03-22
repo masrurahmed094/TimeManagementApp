@@ -1,5 +1,16 @@
+
+
 <?php
 session_start();
+
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit();
+}
 include 'db.php';
 
 if (!isset($_SESSION['user_id'])) {
@@ -9,11 +20,9 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 
-// Handle month/year from URL
 $month = isset($_GET['month']) ? (int)$_GET['month'] : date('m');
 $year = isset($_GET['year']) ? (int)$_GET['year'] : date('Y');
 
-// Normalize month/year
 if ($month < 1) {
     $month = 12;
     $year--;
@@ -25,13 +34,11 @@ if ($month < 1) {
 $first_day_of_month = date('w', strtotime("$year-$month-01"));
 $days_in_month = date('t', strtotime("$year-$month-01"));
 
-// Task summary
 $total_tasks = $conn->query("SELECT COUNT(*) AS total FROM tasks WHERE user_id='$user_id'")->fetch_assoc()['total'];
 $completed_tasks = $conn->query("SELECT COUNT(*) AS total FROM tasks WHERE user_id='$user_id' AND status='completed'")->fetch_assoc()['total'];
 $pending_tasks = $total_tasks - $completed_tasks;
 $completion_percentage = $total_tasks > 0 ? round(($completed_tasks / $total_tasks) * 100) : 0;
 
-// Fetch tasks
 $task_query = $conn->query("SELECT title, description, due_date, priority, status FROM tasks WHERE user_id='$user_id' ORDER BY due_date ASC");
 
 $tasks_by_date = [];
@@ -50,7 +57,6 @@ while ($task = $task_query->fetch_assoc()) {
     }
 }
 
-// Generate reminder list
 if ($nearest_due_date) {
     foreach ($tasks_by_date as $date => $task_list) {
         if ($date > $nearest_due_date) break;
@@ -66,6 +72,10 @@ if ($nearest_due_date) {
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
     <meta charset="UTF-8">
     <title>Dashboard | Smart Time Manager</title>
     <link rel="stylesheet" href="styles.css">
@@ -159,6 +169,18 @@ if ($nearest_due_date) {
             color: gray;
             text-decoration: line-through;
         }
+
+        .today {
+            background-color: #d9f7be !important;
+            border: 2px solid #52c41a;
+        }
+
+        .time-now {
+            display: block;
+            font-size: 10px;
+            margin-top: 4px;
+            color: #595959;
+        }
     </style>
 </head>
 <body>
@@ -222,6 +244,7 @@ if ($nearest_due_date) {
             <tr>
                 <?php
                 $day_counter = 0;
+                $today_date = date('Y-m-d');
 
                 for ($i = 0; $i < $first_day_of_month; $i++) {
                     echo "<td></td>";
@@ -233,6 +256,8 @@ if ($nearest_due_date) {
                     $tasks = $tasks_by_date[$current_date] ?? [];
                     $priority_class = '';
                     $tooltip_text = '';
+                    $is_today = ($current_date === $today_date);
+                    $cell_classes = trim("$priority_class" . ($is_today ? ' today' : ''));
 
                     if (!empty($tasks)) {
                         $priorities = array_column($tasks, 'priority');
@@ -245,9 +270,12 @@ if ($nearest_due_date) {
                             if ($t['description']) $tooltip_text .= "\n{$t['description']}";
                             $tooltip_text .= "\n\n";
                         }
+
+                        $cell_classes = trim("$priority_class" . ($is_today ? ' today' : ''));
                     }
 
-                    echo "<td class='$priority_class' data-tooltip=\"" . htmlspecialchars(trim($tooltip_text)) . "\"><strong>$day</strong>";
+                    echo "<td class='$cell_classes' data-tooltip=\"" . htmlspecialchars(trim($tooltip_text)) . "\"><strong>$day</strong>";
+
                     if (!empty($tasks)) {
                         foreach ($tasks as $t) {
                             $status = $t['status'];
@@ -255,6 +283,11 @@ if ($nearest_due_date) {
                             echo "<small class='$class'>{$t['title']}</small>";
                         }
                     }
+
+                    if ($is_today) {
+                        echo "<span class='time-now' id='local-time'></span>";
+                    }
+
                     echo "</td>";
 
                     $day_counter++;
@@ -295,8 +328,24 @@ if ($nearest_due_date) {
             tooltip.style.display = 'none';
         });
     });
+
+    // Show local system time in the today cell
+    const nowSpan = document.getElementById('local-time');
+    if (nowSpan) {
+        function updateLocalTime() {
+            const now = new Date();
+            let hours = now.getHours();
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            nowSpan.textContent = `Now: ${hours}:${minutes} ${ampm}`;
+        }
+
+        updateLocalTime();
+        setInterval(updateLocalTime, 60000);
+    }
 </script>
 
 </body>
 </html>
- 

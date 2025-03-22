@@ -1,5 +1,17 @@
+
+
+
 <?php
 session_start();
+
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit();
+}
 include 'db.php';
 
 if (!isset($_SESSION['user_id'])) {
@@ -15,8 +27,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_task'])) {
     $description = $_POST['description'];
     $due_date = $_POST['due_date'];
     $priority = $_POST['priority'];
-    $sql = "INSERT INTO tasks (user_id, title, description, due_date, priority) VALUES ('$user_id', '$title', '$description', '$due_date', '$priority')";
-    $conn->query($sql);
+
+    $stmt = $conn->prepare("INSERT INTO tasks (user_id, title, description, due_date, priority) VALUES (?, ?, ?, ?, ?)");
+    $stmt->bind_param("issss", $user_id, $title, $description, $due_date, $priority);
+    $stmt->execute();
+
     header("Location: manage_tasks.php?added=true");
     exit();
 }
@@ -29,8 +44,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['update_task'])) {
     $due_date = $_POST['due_date'];
     $priority = $_POST['priority'];
     $status = $_POST['status'];
-    $sql = "UPDATE tasks SET title='$title', description='$description', due_date='$due_date', priority='$priority', status='$status' WHERE id='$task_id' AND user_id='$user_id'";
-    $conn->query($sql);
+
+    $stmt = $conn->prepare("UPDATE tasks SET title = ?, description = ?, due_date = ?, priority = ?, status = ? WHERE id = ? AND user_id = ?");
+    $stmt->bind_param("ssssssi", $title, $description, $due_date, $priority, $status, $task_id, $user_id);
+    $stmt->execute();
+
     header("Location: manage_tasks.php?updated=true");
     exit();
 }
@@ -38,8 +56,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['update_task'])) {
 // Handle Task Deletion
 if (isset($_GET['delete_id'])) {
     $task_id = $_GET['delete_id'];
-    $sql = "DELETE FROM tasks WHERE id='$task_id' AND user_id='$user_id'";
-    $conn->query($sql);
+
+    $stmt = $conn->prepare("DELETE FROM tasks WHERE id = ? AND user_id = ?");
+    $stmt->bind_param("ii", $task_id, $user_id);
+    $stmt->execute();
+
     header("Location: manage_tasks.php?deleted=true");
     exit();
 }
@@ -54,10 +75,20 @@ $sort_clause = match ($sort_by) {
     default    => "ORDER BY due_date ASC",
 };
 
-$search_clause = $search !== '' ? "AND title LIKE '%$search%'" : '';
+$search_clause = $search !== '' ? "AND title LIKE ?" : '';
+$sql = "SELECT * FROM tasks WHERE user_id=? $search_clause $sort_clause";
 
-$sql = "SELECT * FROM tasks WHERE user_id='$user_id' $search_clause $sort_clause";
-$tasks = $conn->query($sql);
+if ($search !== '') {
+    $stmt = $conn->prepare($sql);
+    $like_search = "%$search%";
+    $stmt->bind_param("is", $user_id, $like_search);
+} else {
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $user_id);
+}
+
+$stmt->execute();
+$tasks = $stmt->get_result();
 ?>
 
 <!DOCTYPE html>
