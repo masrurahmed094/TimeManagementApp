@@ -1,5 +1,3 @@
-
-
 <?php
 session_start();
 
@@ -42,31 +40,25 @@ $completion_percentage = $total_tasks > 0 ? round(($completed_tasks / $total_tas
 $task_query = $conn->query("SELECT title, description, due_date, priority, status FROM tasks WHERE user_id='$user_id' ORDER BY due_date ASC");
 
 $tasks_by_date = [];
-$reminders = [];
+$upcoming_tasks = [];
 $today = date('Y-m-d');
-$nearest_due_date = null;
 
 while ($task = $task_query->fetch_assoc()) {
     $date = $task['due_date'];
     $tasks_by_date[$date][] = $task;
 
-    if ($task['status'] === 'pending') {
-        if (!$nearest_due_date || $date < $nearest_due_date) {
-            $nearest_due_date = $date;
-        }
+    if ($task['status'] === 'pending' && $date >= $today) {
+        $upcoming_tasks[] = $task;
     }
 }
 
-if ($nearest_due_date) {
-    foreach ($tasks_by_date as $date => $task_list) {
-        if ($date > $nearest_due_date) break;
-        foreach ($task_list as $t) {
-            if ($t['status'] === 'pending') {
-                $reminders[] = $t;
-            }
-        }
-    }
-}
+// Sort upcoming tasks by due date
+usort($upcoming_tasks, function($a, $b) {
+    return strtotime($a['due_date']) - strtotime($b['due_date']);
+});
+
+// Limit the number of upcoming reminders displayed
+$reminders = array_slice($upcoming_tasks, 0, 5);
 ?>
 
 <!DOCTYPE html>
@@ -221,8 +213,11 @@ if ($nearest_due_date) {
                     <li>• <strong><?php echo $r['title']; ?></strong> - Due <?php echo date('M j', strtotime($r['due_date'])); ?> (<?php echo $r['priority']; ?>)</li>
                 <?php endforeach; ?>
             </ul>
+            <?php if (count($upcoming_tasks) > count($reminders)): ?>
+                <p><a href="manage_tasks.php">View All Upcoming Tasks</a></p>
+            <?php endif; ?>
         <?php else: ?>
-            <p>No upcoming reminders 🎉</p>
+            <p>No upcoming pending tasks 🎉</p>
         <?php endif; ?>
     </div>
 
