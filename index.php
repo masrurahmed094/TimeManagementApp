@@ -11,11 +11,6 @@ if (!isset($_SESSION['user_id'])) {
 }
 include 'db.php';
 
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit();
-}
-
 $user_id = $_SESSION['user_id'];
 
 $month = isset($_GET['month']) ? (int)$_GET['month'] : date('m');
@@ -37,28 +32,29 @@ $completed_tasks = $conn->query("SELECT COUNT(*) AS total FROM tasks WHERE user_
 $pending_tasks = $total_tasks - $completed_tasks;
 $completion_percentage = $total_tasks > 0 ? round(($completed_tasks / $total_tasks) * 100) : 0;
 
-$task_query = $conn->query("SELECT title, description, due_date, priority, status FROM tasks WHERE user_id='$user_id' ORDER BY due_date ASC");
+$task_query = $conn->query("SELECT id, title, description, due_date, scheduled_date, priority, status FROM tasks WHERE user_id='$user_id' ORDER BY due_date ASC");
 
 $tasks_by_date = [];
 $upcoming_tasks = [];
 $today = date('Y-m-d');
 
 while ($task = $task_query->fetch_assoc()) {
-    $date = $task['due_date'];
-    $tasks_by_date[$date][] = $task;
+    $date = $task['scheduled_date'] ?: $task['due_date'];
+    $formatted = date('Y-m-d', strtotime($date));
+    $tasks_by_date[$formatted][] = $task;
 
-    if ($task['status'] === 'pending' && $date >= $today) {
+    if ($task['status'] === 'pending' && strtotime($formatted) >= strtotime($today)) {
         $upcoming_tasks[] = $task;
     }
 }
 
-// Sort upcoming tasks by due date
-usort($upcoming_tasks, function($a, $b) {
-    return strtotime($a['due_date']) - strtotime($b['due_date']);
+usort($upcoming_tasks, function ($a, $b) {
+    $a_date = $a['scheduled_date'] ?: $a['due_date'];
+    $b_date = $b['scheduled_date'] ?: $b['due_date'];
+    return strtotime($a_date) - strtotime($b_date);
 });
 
-// Limit the number of upcoming reminders displayed
-$reminders = array_slice($upcoming_tasks, 0, 5);
+$reminders = array_slice($upcoming_tasks, 0, 10);
 ?>
 
 <!DOCTYPE html>
@@ -72,7 +68,12 @@ $reminders = array_slice($upcoming_tasks, 0, 5);
     <title>Dashboard | Smart Time Manager</title>
     <link rel="stylesheet" href="styles.css">
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
         header {
             background: #4A90E2;
             color: white;
@@ -81,6 +82,7 @@ $reminders = array_slice($upcoming_tasks, 0, 5);
             justify-content: space-between;
             align-items: center;
         }
+
         header .manage-btn {
             background: black;
             color: red;
@@ -90,9 +92,16 @@ $reminders = array_slice($upcoming_tasks, 0, 5);
             text-decoration: none;
             font-weight: bold;
         }
-        main { padding: 20px; max-width: 960px; margin: auto; }
 
-        .summary, .progress, .reminders, .calendar { margin-bottom: 30px; }
+        main {
+            padding: 20px;
+            max-width: 960px;
+            margin: auto;
+        }
+
+        .summary, .progress, .reminders, .calendar {
+            margin-bottom: 30px;
+        }
 
         .progress-bar {
             background: #e0e0e0;
@@ -100,19 +109,49 @@ $reminders = array_slice($upcoming_tasks, 0, 5);
             overflow: hidden;
             height: 20px;
         }
+
         .progress-fill {
             height: 100%;
             text-align: center;
             color: white;
             font-size: 12px;
         }
-        .reminders ul { list-style: none; padding: 0; }
-        .reminders li { margin-bottom: 5px; }
+
+        .reminders ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .reminders li {
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .reminders li span {
+            flex-grow: 1;
+        }
+
+        .reminders li button {
+            background-color: #5cb85c;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .reminders li button:hover {
+            background-color: #4cae4c;
+        }
 
         .calendar table {
             width: 100%;
             border-collapse: collapse;
         }
+
         .calendar th, .calendar td {
             border: 1px solid #ccc;
             width: 14.28%;
@@ -121,14 +160,24 @@ $reminders = array_slice($upcoming_tasks, 0, 5);
             padding: 5px;
             position: relative;
         }
+
         .calendar small {
             display: block;
             font-size: 11px;
             margin-top: 4px;
         }
-        .calendar .High small { color: red; }
-        .calendar .Medium small { color: orange; }
-        .calendar .Low small { color: green; }
+
+        .calendar .High small {
+            color: red;
+        }
+
+        .calendar .Medium small {
+            color: orange;
+        }
+
+        .calendar .Low small {
+            color: green;
+        }
 
         .tooltip {
             position: absolute;
@@ -180,13 +229,13 @@ $reminders = array_slice($upcoming_tasks, 0, 5);
 <header>
     <h1>Welcome, <?php echo $_SESSION['user_name']; ?>!</h1>
     <div>
-        <a href="manage_tasks.php" class="manage-btn">Manage Tasks</a>
-        <a href="logout.php" style="color: white; margin-left: 15px;">Logout</a>
+        <a href="my_teams.php" style="color: white; margin-right: 15px;">My Teams</a>
+        <a href="manage_tasks.php" class="manage-btn" style="margin-right: 15px;">Manage Tasks</a>
+        <a href="logout.php" style="color: white;">Logout</a>
     </div>
 </header>
 
 <main>
-
     <div class="summary">
         <h2>Task Summary</h2>
         <p>Total Tasks: <strong><?php echo $total_tasks; ?></strong></p>
@@ -199,9 +248,7 @@ $reminders = array_slice($upcoming_tasks, 0, 5);
         <div class="progress-bar">
             <div class="progress-fill" style="width: <?php echo $completion_percentage; ?>%; background-color: <?php
                 echo ($completion_percentage >= 70) ? 'green' : (($completion_percentage >= 30) ? 'orange' : 'red');
-            ?>;">
-                <?php echo $completion_percentage; ?>%
-            </div>
+            ?>;"><?php echo $completion_percentage; ?>%</div>
         </div>
     </div>
 
@@ -210,7 +257,12 @@ $reminders = array_slice($upcoming_tasks, 0, 5);
         <?php if (count($reminders) > 0): ?>
             <ul>
                 <?php foreach ($reminders as $r): ?>
-                    <li>• <strong><?php echo $r['title']; ?></strong> - Due <?php echo date('M j', strtotime($r['due_date'])); ?> (<?php echo $r['priority']; ?>)</li>
+                    <li>
+                        <span>• <strong><?php echo $r['title']; ?></strong> - Due <?php echo date('M j', strtotime($r['due_date'])); ?> (<?php echo $r['priority']; ?>)</span>
+                        <button onclick="scheduleTask('<?php echo $r['id']; ?>','<?php echo $r['title']; ?>', '<?php echo $r['due_date']; ?>', '<?php echo $r['scheduled_date']; ?>')">
+                            <?php echo $r['scheduled_date'] ? 'Reschedule' : 'Schedule Time'; ?>
+                        </button>
+                    </li>
                 <?php endforeach; ?>
             </ul>
             <?php if (count($upcoming_tasks) > count($reminders)): ?>
@@ -221,20 +273,16 @@ $reminders = array_slice($upcoming_tasks, 0, 5);
         <?php endif; ?>
     </div>
 
-    <div class="calendar">
-        <h3>
-            <?php echo date('F Y', strtotime("$year-$month-01")); ?>
-        </h3>
 
+    <div class="calendar">
+        <h3><?php echo date('F Y', strtotime("$year-$month-01")); ?></h3>
         <div class="nav-buttons">
             <a href="?month=<?php echo $month - 1; ?>&year=<?php echo $year; ?>">← Previous</a>
             <a href="?month=<?php echo $month + 1; ?>&year=<?php echo $year; ?>">Next →</a>
         </div>
-
         <table>
             <tr>
-                <th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th>
-                <th>Thu</th><th>Fri</th><th>Sat</th>
+                <th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th>
             </tr>
             <tr>
                 <?php
@@ -252,7 +300,6 @@ $reminders = array_slice($upcoming_tasks, 0, 5);
                     $priority_class = '';
                     $tooltip_text = '';
                     $is_today = ($current_date === $today_date);
-                    $cell_classes = trim("$priority_class" . ($is_today ? ' today' : ''));
 
                     if (!empty($tasks)) {
                         $priorities = array_column($tasks, 'priority');
@@ -261,28 +308,26 @@ $reminders = array_slice($upcoming_tasks, 0, 5);
                         else $priority_class = 'Low';
 
                         foreach (array_slice($tasks, 0, 3) as $t) {
-                            $tooltip_text .= "• {$t['title']}\nPriority: {$t['priority']}\nStatus: {$t['status']}";
+                            $tooltip_text .= "• {$t['title']}\n";
+                            if ($t['scheduled_date']) $tooltip_text .= "Scheduled: " . date('M j, Y H:i', strtotime($t['scheduled_date'])) . "\n";
+                            $tooltip_text .= "Due: " . date('M j, Y', strtotime($t['due_date'])) . "\n";
+                            $tooltip_text .= "Priority: {$t['priority']}\nStatus: {$t['status']}";
                             if ($t['description']) $tooltip_text .= "\n{$t['description']}";
                             $tooltip_text .= "\n\n";
                         }
-
-                        $cell_classes = trim("$priority_class" . ($is_today ? ' today' : ''));
                     }
 
+                    $cell_classes = trim("$priority_class" . ($is_today ? ' today' : ''));
                     echo "<td class='$cell_classes' data-tooltip=\"" . htmlspecialchars(trim($tooltip_text)) . "\"><strong>$day</strong>";
 
-                    if (!empty($tasks)) {
-                        foreach ($tasks as $t) {
-                            $status = $t['status'];
-                            $class = ($status === 'completed') ? 'completed-task' : strtolower($t['priority']);
-                            echo "<small class='$class'>{$t['title']}</small>";
-                        }
+                    foreach ($tasks as $t) {
+                        $status = $t['status'];
+                        $class = ($status === 'completed') ? 'completed-task' : strtolower($t['priority']);
+                        $display_date = $t['scheduled_date'] ? date('H:i', strtotime($t['scheduled_date'])) : date('H:i', strtotime($t['due_date']));
+                        echo "<small class='$class'>{$t['title']} ($display_date)</small>";
                     }
 
-                    if ($is_today) {
-                        echo "<span class='time-now' id='local-time'></span>";
-                    }
-
+                    if ($is_today) echo "<span class='time-now' id='local-time'></span>";
                     echo "</td>";
 
                     $day_counter++;
@@ -298,49 +343,81 @@ $reminders = array_slice($upcoming_tasks, 0, 5);
         </table>
         <div class="tooltip" id="tooltip-box"></div>
     </div>
-
 </main>
 
 <script>
-    const tooltip = document.getElementById('tooltip-box');
-    const cells = document.querySelectorAll('[data-tooltip]');
-
-    cells.forEach(cell => {
-        cell.addEventListener('mouseover', e => {
-            const text = cell.getAttribute('data-tooltip');
-            if (!text.trim()) return;
-
-            tooltip.style.display = 'block';
-            tooltip.innerText = text.trim();
-        });
-
-        cell.addEventListener('mousemove', e => {
-            tooltip.style.top = (e.pageY + 15) + 'px';
-            tooltip.style.left = (e.pageX + 15) + 'px';
-        });
-
-        cell.addEventListener('mouseout', () => {
-            tooltip.style.display = 'none';
-        });
+const tooltip = document.getElementById('tooltip-box');
+const cells = document.querySelectorAll('[data-tooltip]');
+cells.forEach(cell => {
+    cell.addEventListener('mouseover', e => {
+        const text = cell.getAttribute('data-tooltip');
+        if (!text.trim()) return;
+        tooltip.style.display = 'block';
+        tooltip.innerText = text.trim();
     });
+    cell.addEventListener('mousemove', e => {
+        tooltip.style.top = (e.pageY + 15) + 'px';
+        tooltip.style.left = (e.pageX + 15) + 'px';
+    });
+    cell.addEventListener('mouseout', () => {
+        tooltip.style.display = 'none';
+    });
+});
 
-    // Show local system time in the today cell
-    const nowSpan = document.getElementById('local-time');
-    if (nowSpan) {
-        function updateLocalTime() {
-            const now = new Date();
-            let hours = now.getHours();
-            const minutes = now.getMinutes().toString().padStart(2, '0');
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12;
-            nowSpan.textContent = `Now: ${hours}:${minutes} ${ampm}`;
-        }
-
-        updateLocalTime();
-        setInterval(updateLocalTime, 60000);
+const nowSpan = document.getElementById('local-time');
+if (nowSpan) {
+    function updateLocalTime() {
+        const now = new Date();
+        nowSpan.textContent = `Now: ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}`;
     }
-</script>
+    updateLocalTime();
+    setInterval(updateLocalTime, 60000);
+}
 
+function scheduleTask(taskId, title, dueDate, existingScheduled = '') {
+    const defaultDate = existingScheduled || dueDate;
+
+    let scheduledDate = prompt(`Enter the new scheduled date and time for "${title}" (Due: ${dueDate}):`, defaultDate);
+    if (!scheduledDate) return alert("Task scheduling cancelled.");
+
+    // Convert to ISO format for parsing
+    const isoString = scheduledDate.replace(' ', 'T');
+    let parsedDate = new Date(isoString);
+
+    if (isNaN(parsedDate.getTime())) {
+        return alert("Invalid format. Please use: YYYY-MM-DD HH:MM:SS");
+    }
+
+    const now = new Date();
+    now.setSeconds(0, 0); // clean milliseconds/seconds for comparison
+
+    if (parsedDate.getTime() < now.getTime()) {
+        return alert("Scheduled time must be now or in the future.");
+    }
+
+    const dueDateObj = new Date(dueDate);
+    if (parsedDate.getTime() > dueDateObj.getTime()) {
+        return alert("Scheduled time cannot be after the due date.");
+    }
+
+    // Send time in local format instead of UTC
+    const local = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth()+1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')} ${String(parsedDate.getHours()).padStart(2, '0')}:${String(parsedDate.getMinutes()).padStart(2, '0')}:00`;
+
+    if (confirm(`Schedule "${title}" for ${local}?`)) {
+        fetch('schedule_task.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `taskId=${taskId}&scheduledDate=${encodeURIComponent(local)}`
+        })
+        .then(res => res.text())
+        .then(alert)
+        .then(() => window.location.reload())
+        .catch(() => alert('Error scheduling task.'));
+    }
+}
+
+
+
+</script>
 </body>
 </html>

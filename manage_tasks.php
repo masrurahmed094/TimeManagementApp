@@ -1,4 +1,5 @@
-<?php session_start();
+<?php
+session_start();
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
@@ -8,11 +9,6 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 include 'db.php';
-
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit();
-}
 
 $user_id = $_SESSION['user_id'];
 
@@ -62,9 +58,23 @@ if (isset($_GET['delete_id'])) {
     exit();
 }
 
-// Sorting and Searching
+// Filters
+$filter = $_GET['filter'] ?? '';
 $sort_by = $_GET['sort_by'] ?? 'due_date';
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
+
+$where_clause = "WHERE user_id=?";
+$params = ["i", $user_id];
+
+if ($filter === "pending") {
+    $where_clause .= " AND status='pending'";
+}
+
+if ($search !== '') {
+    $where_clause .= " AND title LIKE ?";
+    $params[0] .= "s";
+    $params[] = "%$search%";
+}
 
 $sort_clause = match ($sort_by) {
     'priority' => "ORDER BY FIELD(priority, 'High', 'Medium', 'Low')",
@@ -72,18 +82,9 @@ $sort_clause = match ($sort_by) {
     default    => "ORDER BY due_date ASC",
 };
 
-$search_clause = $search !== '' ? "AND title LIKE ?" : '';
-$sql = "SELECT * FROM tasks WHERE user_id=? $search_clause $sort_clause";
-
-if ($search !== '') {
-    $stmt = $conn->prepare($sql);
-    $like_search = "%$search%";
-    $stmt->bind_param("is", $user_id, $like_search);
-} else {
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $user_id);
-}
-
+$sql = "SELECT * FROM tasks $where_clause $sort_clause";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param(...$params);
 $stmt->execute();
 $tasks = $stmt->get_result();
 ?>
@@ -182,7 +183,7 @@ $tasks = $stmt->get_result();
 
 <header>
     <h1>Manage Tasks</h1>
-    <a href="index.php" style="color: white; text-decoration: underline;"> Back to Dashboard</a>
+    <a href="index.php" style="color: white; text-decoration: underline;">Back to Dashboard</a>
 </header>
 
 <main>
@@ -198,6 +199,9 @@ $tasks = $stmt->get_result();
         </select>
 
         <input type="text" name="search" placeholder="Search by Title" value="<?php echo htmlspecialchars($search); ?>">
+        <?php if ($filter === 'pending'): ?>
+            <input type="hidden" name="filter" value="pending">
+        <?php endif; ?>
         <button type="submit">Apply</button>
     </form>
 
@@ -219,7 +223,7 @@ $tasks = $stmt->get_result();
         </div>
 
         <div class="task-list">
-            <h3>Your Tasks</h3>
+            <h3>Your Tasks<?php if ($filter === 'pending') echo ' (Pending Only)'; ?></h3>
             <?php if ($tasks->num_rows > 0): ?>
                 <form method="post">
                     <ul style="list-style-type: none; padding: 0;">

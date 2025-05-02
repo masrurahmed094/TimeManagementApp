@@ -1,6 +1,3 @@
-
-
-
 <?php
 include 'db.php';
 
@@ -9,13 +6,29 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $email = $_POST['email'];
     $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
 
-    $sql = "INSERT INTO users (name, email, password) VALUES ('$name', '$email', '$password')";
+    // Check if the email already exists
+    $stmt = $conn->prepare("SELECT COUNT(*) FROM users WHERE email = ?");
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+    $stmt->bind_result($count);
+    $stmt->fetch();
+    $stmt->close();
 
-    if ($conn->query($sql) === TRUE) {
-        header("Location: login.php");
-        exit();
+    if ($count > 0) {
+        $error = "This email address is already registered. Please log in.";
     } else {
-        $error = "Error: " . $conn->error;
+        // Email is not registered, proceed with insertion
+        $sql = "INSERT INTO users (name, email, password) VALUES (?, ?, ?)";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("sss", $name, $email, $password);
+
+        if ($stmt->execute()) {
+            header("Location: login.php");
+            exit();
+        } else {
+            $error = "Error: " . $stmt->error;
+        }
+        $stmt->close();
     }
 }
 ?>
@@ -30,7 +43,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <body>
 <div class="form-container">
     <h2>Register</h2>
-    <?php if (isset($error)) echo "<p>$error</p>"; ?>
+    <?php if (isset($error)) echo "<p class=\"error\">$error</p>"; ?>
     <form method="post">
         <input type="text" name="name" placeholder="Full Name" required><br>
         <input type="email" name="email" placeholder="Email" required><br>
